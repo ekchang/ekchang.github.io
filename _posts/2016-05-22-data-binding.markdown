@@ -67,7 +67,7 @@ class ExampleActivity extends Activity {
 }
 ```
 
-The generated `ViewDataBinding` object acts as the ViewHolder for you, doing automatic type casting for you. No need to jump into the MVVM aspect of it--the binding is incredibly invaluable as a ViewHolder in itself. All you need to do for this migration is to wrap your root layout in `<layout/>` tags and move all the namespace definitions.
+The generated `ViewDataBinding` object acts as the ViewHolder for you, doing automatic type casting for you. No need to jump into the MVVM aspect of it--the binding is incredibly invaluable as a ViewHolder in itself. All you need to do for this migration is to wrap your root layout in `<layout>` tags and move all the namespace definitions.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
