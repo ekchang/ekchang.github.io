@@ -52,8 +52,8 @@
 		}
 
 	strong, b {
-		color: #787878;
-		font-weight: 400;
+		color: #073642;
+		font-weight: 700;
 	}
 
 	em, i {
@@ -138,6 +138,7 @@
 	code {
 		font-family: "Menlo", monospace;
 		font-size: 0.9em;
+		color: #6c71c4;
 	}
 
 	pre {
