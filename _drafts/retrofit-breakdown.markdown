@@ -4,7 +4,7 @@ title: Library Breakdown - Retrofit 2.0.2
 categories: breakdown
 ---
 
-This is part of a series of library breakdowns to better understand what these libraries do for us. Diving deeper into the internals lets us appreciate what good software looks like and give us confidence in emulating these practices in our own code.
+This is part of a series of library breakdowns to better understand what these libraries do for us. Diving deeper into the internals lets us appreciate what good software looks like and give us confidence in emulating these practices in our own code. These breakdowns assume you know how to use them, but have always been wondering how they work and what they're doing under the hood.
 
 ### Constructing a Retrofit instance
 
@@ -12,12 +12,12 @@ This is part of a series of library breakdowns to better understand what these l
 
 ```java
 Retrofit retrofit = new Retrofit.Builder()
-  .baseUrl("https://api.example.com/")
+  .baseUrl("https://api.github.com/")
   .addConverterFactory(GsonConverterFactory.create())
   .build();
 ```
 
-A Retrofit instance is immutable (and thus, thread-safe), and is constructed with a standard Builder pattern--the Builder class represents the mutable instance that allows you to configure Retrofit's internals before calling build, finalizing the Retrofit object.
+A Retrofit instance is immutable (and thus, thread-safe), and is constructed with a standard Builder pattern.
 
 ```java
 public static class Builder {
@@ -58,7 +58,21 @@ Here you can see what the core components of Retrofit are:
 - **`converterFactories`**: These factories define how to convert `ResponseBody` and `RequestBody` to your POJOs. That's what `GsonConverterFactory` does: it takes a `ResponseBody#charStream()`, creates a `JsonReader` from it, then feeds it to a `TypeAdapter<T>` to give you the object you're looking for. More on `Converter` and `Converter.Factory` later.
 - **`adapterFactories`**: By default Retrofit interfaces must return `Call<T>` objects. In a similar fashion as converter factories, which convert the response/request to another type, you can provide a converter that converts the Call object itself. The most common one I've seen is `RxJavaCallAdapterFactory` (`Observable`), but the other built in ones include `Java8CallAdapterFactory` (`CompleteableFuture`) and `GuavaCallAdapterFactory` (`ListenableFuture`). More on this later.
 - **`callbackExecutor`**: The Executor to perform Callback methods on. On Android, this returns an Executor that passes all tasks to the main thread (via a Handler constructed with `Looper.getMainLooper()`). On IOS, `NSOperationQueue#addOperation` and `NSOperationQueue#getMainQueue` are obtained reflectively and invoked during `execute`. Everything else, the default executor is null--meaning callbacks are all executed on the same thread as `Call#enqueue`.
-- **`validateEagerly`**: 
+- **`validateEagerly`**: By default, whenever you call one of your REST interface methods (GET, POST, etc), Retrofit lazily creates these methods for you internally as `ServiceMethods`. Once created, they're cached in a map. There are some reflective calls needed to parse your defined method parameters and annotations--if you deem the construction of these methods to be a bottleneck in your app, you can turn on eager validation to move the reflective operations ahead of time. Typically the reflective cost of creating these methods are outweighed by the actual network calls, so it is fine to leave it as false by default.
+
+### Service Creation
+
+```java
+public interface GitHubService {
+  @GET("users/{user}/repos")
+  Call<List<Repo>> listRepos(@Path("user") String user);
+}
+
+// TODO set up retrofit
+
+GitHubService service = retrofit.create(GitHubService.class);
+```
+
 
 
  [retrofit]: http://square.github.io/retrofit/
