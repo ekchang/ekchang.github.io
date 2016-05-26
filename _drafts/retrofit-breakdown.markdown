@@ -53,12 +53,14 @@ public static class Builder {
 ```
 Here you can see what the core components of Retrofit are:
 
-- **`callFactory`**: The factory that constructs `Call` objects. A Call makes a request and receives a response. By default it uses `OkHttpClient`. 
+- **`callFactory`**: The factory that constructs `Call` objects. This is what makes the actual network calls--a Call makes a request and receives a response. By default it uses `OkHttpClient`. 
 - **`baseUrl`**: The HttpUrl, part of OkHttp. If you set the `baseUrl` as a String, Retrofit converts it with `HttpUrl.parse`.
-- **`converterFactories`**: These factories define how to convert `ResponseBody` and `RequestBody` to your POJOs. That's what `GsonConverterFactory` does: it takes a `ResponseBody#charStream()`, creates a `JsonReader` from it, then feeds it to a `TypeAdapter<T>` to give you the object you're looking for. More on `Converter` and `Converter.Factory` later.
+- **`converterFactories`**: This converts your requests and responses--`ResponseBody` and `RequestBody`--to your POJOs. That's what `GsonConverterFactory` does: it takes a `ResponseBody#charStream()`, creates a `JsonReader` from it, then feeds it to a `TypeAdapter<T>` to give you the object you're looking for. More on `Converter` and `Converter.Factory` later.
 - **`adapterFactories`**: By default Retrofit interfaces must return `Call<T>` objects. In a similar fashion as converter factories, which convert the response/request to another type, you can provide a converter that converts the Call object itself. The most common one I've seen is `RxJavaCallAdapterFactory` (`Observable`), but the other built in ones include `Java8CallAdapterFactory` (`CompleteableFuture`) and `GuavaCallAdapterFactory` (`ListenableFuture`). More on this later.
 - **`callbackExecutor`**: The Executor to perform Callback methods on. On Android, this returns an Executor that passes all tasks to the main thread (via a Handler constructed with `Looper.getMainLooper()`). On IOS, `NSOperationQueue#addOperation` and `NSOperationQueue#getMainQueue` are obtained reflectively and invoked during `execute`. Everything else, the default executor is null--meaning callbacks are all executed on the same thread as `Call#enqueue`.
 - **`validateEagerly`**: By default, whenever you call one of your REST interface methods (GET, POST, etc), Retrofit lazily creates these methods for you internally as `ServiceMethods`. Once created, they're cached in a map. There are some reflective calls needed to parse your defined method parameters and annotations--if you deem the construction of these methods to be a bottleneck in your app, you can turn on eager validation to move the reflective operations ahead of time. Typically the reflective cost of creating these methods are outweighed by the actual network calls, so it is fine to leave it as false by default.
+
+The heart of Retrofit lies in its three factories: one which defines the client that makes the network calls, one that acts as a bridge between request/responses and your Java objects, and one that acts as a converter for the `Call` objects.
 
 ### Service Creation
 
@@ -73,6 +75,24 @@ public interface GitHubService {
 GitHubService service = retrofit.create(GitHubService.class);
 ```
 
+The magical create method, whose javadoc is longer than the implementation itself. Here's what it's doing (checks and default/platform method routing omitted):
+
+```java
+public <T> T create(final Class<T> service) {
+    return (T) Proxy.newProxyInstance(service.getClassLoader(), new Class< ?>[] { service },
+        new InvocationHandler() {
+          @Override public Object invoke(Object proxy, Method method, Object... args)
+              throws Throwable {
+            ServiceMethod serviceMethod = loadServiceMethod(method);
+            OkHttpCall okHttpCall = new OkHttpCall<>(serviceMethod, args);
+            return serviceMethod.callAdapter.adapt(okHttpCall);
+          }
+        });
+  }
+```
+It is clear what is happening under the hood. A [proxy][proxy] instance is created in which every method defined by the interface is pushed to `CallAdapter#adapt`. The default CallAdapter returns the Call itself.
+
 
 
  [retrofit]: http://square.github.io/retrofit/
+ [proxy]: https://docs.oracle.com/javase/7/docs/api/java/lang/reflect/Proxy.html
