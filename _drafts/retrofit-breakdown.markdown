@@ -90,7 +90,121 @@ public <T> T create(final Class<T> service) {
         });
   }
 ```
-It is clear what is happening under the hood. A [proxy][proxy] instance is created in which every method defined by the interface is pushed to `CallAdapter#adapt`. The default CallAdapter returns the Call itself.
+It is clear what is happening under the hood. A [proxy][proxy] instance is created in which every method defined by the interface is used to create an `OkHttpCall`. The call adapter then applies any user-defined transformation to convert the Call object to whatever else they want to wrap `T` (Observable, etc). The default CallAdapter returns the Call itself.
+
+### OkHttpCall - an okhttp3.RealCall wrapper
+
+The default Call returned is always an instance of `OkHttpCall`, which is backed by an `okhttp3.Call`. Given a default `Call.Factory` of `OkHttpClient`, this will actually be an `okhttp3.RealCall` instance. Let's discuss how this is all created.
+
+The two most common uses of a Call is to use `execute()` or `enqueue()` for synchronous and asynchronous requests respectively. These have some guards, error checks, and cancel checks, but the main goal is to invoke the backing `okhttp3.Call` `execute()` and `enqueue()` respectively.
+
+```java
+OkHttpCall.java
+
+public Response<T> execute() throws IOException {
+  okhttp3.Call call;
+
+  synchronized (this) {
+    // Checks/guards omitted
+    ... 
+    call = createRawCall();
+  }
+
+  return parseResponse(call.execute());
+}
+
+private okhttp3.Call createRawCall() throws IOException {
+    Request request = serviceMethod.toRequest(args);
+    okhttp3.Call call = serviceMethod.callFactory.newCall(request);
+    if (call == null) {
+      throw new NullPointerException("Call.Factory returned null.");
+    }
+    return call;
+}
+```
+
+Now we see where the `ServiceMethod` comes in. A `Request` is created from the `ServiceMethod` configurations and provided arguments and invoke the CallFactory's `newCall(Request)` to get a new Call. What does `OkHttpCall#newCall(Request)` look like?
+
+```java
+OkHttpClient.java
+
+public Call newCall(Request request) {
+  return new RealCall(this, request);
+}
+```
+
+We won't be diving into `RealCall` -- that's more suitable for an OkHttp breakdown.
+
+The `enqueue()` implementation is identical to `execute()` except `call.enqueue()` is called at the end. An `okhttp3.Callback` which delegates all responses to the callback provided when invoking `Call#enqueue(Callback<T> callback)`.
+
+```java
+OkHttpCall.java
+
+public void enqueue(final Callback<T> callback) {
+  // Same implementation as execute except for return statement
+
+  ...
+
+  call.enqueue(new okhttp3.Callback() {
+    @Override public void onResponse(okhttp3.Call call, okhttp3.Response rawResponse)
+        throws IOException {
+      Response<T> response;
+      try {
+        response = parseResponse(rawResponse);
+      } catch (Throwable e) {
+        callFailure(e);
+        return;
+      }
+      callSuccess(response);
+    }
+
+    @Override public void onFailure(okhttp3.Call call, IOException e) {
+      callback.onFailure(OkHttpCall.this, e);
+    }
+
+    private void callFailure(Throwable e) {
+      callback.onFailure(OkHttpCall.this, e);
+    }
+
+    private void callSuccess(Response<T> response) {
+      callback.onResponse(OkHttpCall.this, response);
+    }
+  });
+}
+```
+
+Regardless of whether you call `execute()` or `enqueue()`, a successful response is passed through `parseResonse()`. The parse attempts to strip the body from the response and return `Response.success(body, response)` or `Response.error()`. These are static factory methods for getting `Responses`:
+
+```java
+Response<T> parseResponse(okhttp3.Response rawResponse) throws IOException {
+  ResponseBody rawBody = rawResponse.body();
+
+  // Remove the body's source (the only stateful object) so we can pass the response along.
+  rawResponse = rawResponse.newBuilder()
+      .body(new NoContentResponseBody(rawBody.contentType(), rawBody.contentLength()))
+      .build();
+
+  int code = rawResponse.code();
+  if (code < 200 || code >= 300) {
+    // Buffer the entire body to avoid future I/O.
+    ResponseBody bufferedBody = Utils.buffer(rawBody);
+    rawBody.close();
+    return Response.error(bufferedBody, rawResponse);
+  }
+
+  if (code == 204 || code == 205) {
+    return Response.success(null, rawResponse);
+  }
+
+  ExceptionCatchingRequestBody catchingBody = new ExceptionCatchingRequestBody(rawBody);
+  T body = serviceMethod.toResponse(catchingBody);
+  return Response.success(body, rawResponse);
+}
+```
+
+HTTP status codes between 200-300 encompass success and redirects; outside of those ranges are client/server errors. 204 and 205 codes have no body. Note that the body type is determined via the `ServiceMethod`, which runs the `ResponseBody` through its assigned `Converter<ResponseBody, T>`. 
+
+### Converters
 
 
 
