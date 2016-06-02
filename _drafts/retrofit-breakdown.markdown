@@ -52,7 +52,7 @@ Here you can see what the core components of Retrofit are:
 - **`converterFactories`**: This converts your requests and responses--`ResponseBody` and `RequestBody`--to your POJOs. That's what `GsonConverterFactory` does: it takes a `ResponseBody#charStream()`, creates a `JsonReader` from it, then feeds it to a `TypeAdapter<T>` to give you the object you're looking for. More on `Converter` and `Converter.Factory` later.
 - **`adapterFactories`**: By default Retrofit interfaces must return `Call<T>` objects. In a similar fashion as converter factories, which convert the response/request to another type, you can provide a converter that converts the Call object itself. The most common one I've seen is `RxJavaCallAdapterFactory` (`Observable`), but the other built in ones include `Java8CallAdapterFactory` (`CompleteableFuture`) and `GuavaCallAdapterFactory` (`ListenableFuture`). More on this later.
 - **`callbackExecutor`**: The Executor to perform Callback methods on. On Android, this returns an Executor that passes all tasks to the main thread (via a Handler constructed with `Looper.getMainLooper()`). On IOS, `NSOperationQueue#addOperation` and `NSOperationQueue#getMainQueue` are obtained reflectively and invoked during `execute`. Everything else, the default executor is null--meaning callbacks are all executed on the same thread as `Call#enqueue`.
-- **`validateEagerly`**: By default, whenever you call one of your REST interface methods (GET, POST, etc), Retrofit lazily creates these methods for you internally as `ServiceMethods`. Once created, they're cached in a map. There are some reflective calls needed to parse your defined method parameters and annotations--if you deem the construction of these methods to be a bottleneck in your app, you can turn on eager validation to move the reflective operations ahead of time. Typically the reflective cost of creating these methods are outweighed by the actual network calls, so it is fine to leave it as false by default.
+- **`validateEagerly`**: By default, whenever you call one of your REST interface methods (GET, POST, etc), Retrofit lazily creates these methods for you internally as `ServiceMethods`. Once created, they're cached in a map. There are some reflective calls needed to parse your defined method parameters and annotations--if you deem the construction of these methods to be a bottleneck in your app, you can turn on eager validation to move up the reflective operations ahead of time. Typically the reflective cost of creating these methods are outweighed by the actual network calls, so it is fine to leave it as false by default.
 
 The heart of Retrofit lies in its three factories: one which defines the client that makes the network calls, one that acts as a bridge between request/responses and your Java objects, and one that acts as a converter for the `Call` objects.
 
@@ -73,7 +73,8 @@ The magical create method, whose javadoc is longer than the implementation itsel
 
 ```java
 public <T> T create(final Class<T> service) {
-    return (T) Proxy.newProxyInstance(service.getClassLoader(), new Class< ?>[] { service },
+
+    return (T) Proxy.newProxyInstance(service.getClassLoader(), new Class<?>[] { service },
         new InvocationHandler() {
           @Override public Object invoke(Object proxy, Method method, Object... args)
               throws Throwable {
@@ -93,7 +94,7 @@ The default Call returned is always an instance of `OkHttpCall`, which is backed
 The two most common uses of a Call is to use `execute()` or `enqueue()` for synchronous and asynchronous requests respectively. These have some guards, error checks, and cancel checks, but the main goal is to invoke the backing `okhttp3.Call` `execute()` and `enqueue()` respectively.
 
 ```java
-OkHttpCall.java
+// OkHttpCall.java
 
 public Response<T> execute() throws IOException {
   okhttp3.Call call;
@@ -118,7 +119,7 @@ private okhttp3.Call createRawCall() throws IOException {
 Now we see where the `ServiceMethod` comes in. A `Request` is created from the `ServiceMethod` configurations and provided arguments and invoke the CallFactory's `newCall(Request)` to get a new Call. What does `OkHttpCall#newCall(Request)` look like?
 
 ```java
-OkHttpClient.java
+// okhttp3.OkHttpClient.java
 
 public Call newCall(Request request) { return new RealCall(this, request); }
 ```
@@ -128,7 +129,7 @@ We won't be diving into `RealCall` -- that's more suitable for an OkHttp breakdo
 The `enqueue()` implementation is identical to `execute()` except `call.enqueue()` is called at the end. An `okhttp3.Callback` which delegates all responses to the callback provided when invoking `Call#enqueue(Callback<T> callback)`.
 
 ```java
-OkHttpCall.java
+// OkHttpCall.java
 
 public void enqueue(final Callback<T> callback) {
   // Same implementation as execute except for return statement
@@ -236,6 +237,7 @@ Retrofit retrofit = new Retrofit.Builder()
   .build();
 
 public final GsonConverterFactory extends Converter.Factory {
+
   private final Gson gson;
 
   @Override
@@ -254,11 +256,81 @@ public final GsonConverterFactory extends Converter.Factory {
 }
 ```
 
-`GsonConverterFactory` will _never return null_ and thus if you register any converter factories after `GsonConverterFactory`, they will be completely ignored. This is documented in `GsonConverterFactory` javadoc.
+`GsonConverterFactory` will _never return a null converter_ and thus if you register any converter factories after `GsonConverterFactory`, they will be completely ignored. This is documented in `GsonConverterFactory` javadoc.
 
-### Call Adapter Factories
+### Call Adapters
 
+By default, every service method returns a `Call<T>`. Recall that the default will be an `OkHttpCall<T>`, using an `okhttp3.Call` under the hood. 
 
+```java
+ServiceMethod serviceMethod = loadServiceMethod(method);
+OkHttpCall okHttpCall = new OkHttpCall<>(serviceMethod, args);
+return serviceMethod.callAdapter.adapt(okHttpCall);
+```
+
+When a method is invoked, the resulting `OkHttpCall` is passed through the call adapter--which adapts a Call object to another type. 
+
+```java
+public interface CallAdapter<T> {
+
+  Type responseType();
+
+  <R> T adapt(Call<R> call);
+
+  abstract class Factory {
+    public abstract CallAdapter<?> get(Type returnType, Annotation[] annotations, Retrofit retrofit);
+
+    protected static Type getParameterUpperBound(int index, ParameterizedType type) { 
+      return Utils.getParameterUpperBound(index, type); 
+    }
+
+    protected static Class<?> getRawType(Type type) { return Utils.getRawType(type); }
+  }
+}
+```
+
+Naturally, the default adapter returns the call itself:
+
+```java
+final class DefaultCallAdapterFactory extends CallAdapter.Factory {
+
+  public CallAdapter<?> get(Type returnType, Annotation[] annotations, Retrofit retrofit) {
+    if (getRawType(returnType) != Call.class) { return null; }
+
+    final Type responseType = Utils.getCallResponseType(returnType);
+    return new CallAdapter<Call<?>>() {
+      @Override public Type responseType() { return responseType; }
+
+      @Override public <R> Call<R> adapt(Call<R> call) { return call; }
+    };
+  }
+}
+```
+
+It is worth looking at `RxJavaCallAdapterFactory` to see how Call objects are adapted to Observables:
+
+```java
+private CallAdapter<Observable<?>> getCallAdapter(Type returnType, Scheduler scheduler) {
+
+  Type observableType = getParameterUpperBound(0, (ParameterizedType) returnType);
+
+  Class<?> rawObservableType = getRawType(observableType);
+
+  if (rawObservableType == Response.class) {
+    ...
+    Type responseType = getParameterUpperBound(0, (ParameterizedType) observableType);
+    return new ResponseCallAdapter(responseType, scheduler);
+  }
+
+  if (rawObservableType == Result.class) {
+    ...
+    Type responseType = getParameterUpperBound(0, (ParameterizedType) observableType);
+    return new ResultCallAdapter(responseType, scheduler);
+  }
+
+  return new SimpleCallAdapter(observableType, scheduler);
+}
+```
 
  [retrofit]: http://square.github.io/retrofit/
  [proxy]: https://docs.oracle.com/javase/7/docs/api/java/lang/reflect/Proxy.html
