@@ -25,19 +25,13 @@ public static class Builder {
   // ... Other setters
 
   public Retrofit build() {
-    if (baseUrl == null) {
-      throw new IllegalStateException("Base URL required.");
-    }
+    if (baseUrl == null) { throw new IllegalStateException("Base URL required."); }
 
     okhttp3.Call.Factory callFactory = this.callFactory;
-    if (callFactory == null) {
-      callFactory = new OkHttpClient();
-    }
+    if (callFactory == null) { callFactory = new OkHttpClient(); }
 
     Executor callbackExecutor = this.callbackExecutor;
-    if (callbackExecutor == null) {
-      callbackExecutor = platform.defaultCallbackExecutor();
-    }
+    if (callbackExecutor == null) { callbackExecutor = platform.defaultCallbackExecutor(); }
 
     // Make a defensive copy of the adapters and add the default Call adapter.
     List<CallAdapter.Factory> adapterFactories = new ArrayList<>(this.adapterFactories);
@@ -116,9 +110,7 @@ public Response<T> execute() throws IOException {
 private okhttp3.Call createRawCall() throws IOException {
     Request request = serviceMethod.toRequest(args);
     okhttp3.Call call = serviceMethod.callFactory.newCall(request);
-    if (call == null) {
-      throw new NullPointerException("Call.Factory returned null.");
-    }
+    if (call == null) { throw new NullPointerException("Call.Factory returned null."); }
     return call;
 }
 ```
@@ -128,9 +120,7 @@ Now we see where the `ServiceMethod` comes in. A `Request` is created from the `
 ```java
 OkHttpClient.java
 
-public Call newCall(Request request) {
-  return new RealCall(this, request);
-}
+public Call newCall(Request request) { return new RealCall(this, request); }
 ```
 
 We won't be diving into `RealCall` -- that's more suitable for an OkHttp breakdown.
@@ -158,17 +148,11 @@ public void enqueue(final Callback<T> callback) {
       callSuccess(response);
     }
 
-    @Override public void onFailure(okhttp3.Call call, IOException e) {
-      callback.onFailure(OkHttpCall.this, e);
-    }
+    @Override public void onFailure(okhttp3.Call call, IOException e) { callback.onFailure(OkHttpCall.this, e); }
 
-    private void callFailure(Throwable e) {
-      callback.onFailure(OkHttpCall.this, e);
-    }
+    private void callFailure(Throwable e) { callback.onFailure(OkHttpCall.this, e); }
 
-    private void callSuccess(Response<T> response) {
-      callback.onResponse(OkHttpCall.this, response);
-    }
+    private void callSuccess(Response<T> response) { callback.onResponse(OkHttpCall.this, response); }
   });
 }
 ```
@@ -192,9 +176,7 @@ Response<T> parseResponse(okhttp3.Response rawResponse) throws IOException {
     return Response.error(bufferedBody, rawResponse);
   }
 
-  if (code == 204 || code == 205) {
-    return Response.success(null, rawResponse);
-  }
+  if (code == 204 || code == 205) { return Response.success(null, rawResponse); }
 
   ExceptionCatchingRequestBody catchingBody = new ExceptionCatchingRequestBody(rawBody);
   T body = serviceMethod.toResponse(catchingBody);
@@ -205,6 +187,76 @@ Response<T> parseResponse(okhttp3.Response rawResponse) throws IOException {
 HTTP status codes between 200-300 encompass success and redirects; outside of those ranges are client/server errors. 204 and 205 codes have no body. Note that the body type is determined via the `ServiceMethod`, which runs the `ResponseBody` through its assigned `Converter<ResponseBody, T>`. 
 
 ### Converters
+
+Converters are what you use to transform one type to another. In the context of Retrofit, you're interested in converting objects into `RequestBody` and `ResponseBody` into objects--otherwise every service interface you define would be forced to have a return type of `Call<ResponseBody>`. The `BuiltInConverters` factory includes a few default converters, namely ones which don't do any conversion and pass the body through.
+
+Here's the complete `Converter` interface and `Converter.Factory` class:
+
+```java
+public interface Converter<F, T> {
+  T convert(F value) throws IOException;
+
+  /** Creates {@link Converter} instances based on a type and target usage. */
+  abstract class Factory {
+    public Converter<ResponseBody, ?> responseBodyConverter(Type type, Annotation[] annotations,
+        Retrofit retrofit) { return null; }
+
+    public Converter<?, RequestBody> requestBodyConverter(Type type,
+        Annotation[] parameterAnnotations, Annotation[] methodAnnotations, Retrofit retrofit) { return null; }
+
+    public Converter<?, String> stringConverter(Type type, Annotation[] annotations,
+        Retrofit retrofit) { return null; }
+  }
+}
+```
+
+When the `ServiceMethod` is created (upon first service method call, in which it is cached afterward, or at Retrofit creation if we `validateEagerly`), Retrofit iterates through the converter factories to find a factory that can support the required return type for the service method and generates the Converter:
+
+```java
+public <T> Converter<ResponseBody, T> nextResponseBodyConverter(Converter.Factory skipPast,
+      Type type, Annotation[] annotations) {
+  int start = converterFactories.indexOf(skipPast) + 1;
+  for (int i = start, count = converterFactories.size(); i < count; i++) {
+    Converter<ResponseBody, ?> converter =
+        converterFactories.get(i).responseBodyConverter(type, annotations, this);
+    if (converter != null) {
+      return (Converter<ResponseBody, T>) converter;
+    }
+  }
+}
+```
+
+When a factory returns a null Converter, it is saying "sorry, I don't support converting this type" and then Retrofit tries again with the next factory. This seems trivial to mention, but this implementation is important because _the order in which you register converters matters_. Recall the Retrofit setup gist:
+
+```java
+Retrofit retrofit = new Retrofit.Builder()
+  .baseUrl("https://api.github.com/")
+  .addConverterFactory(GsonConverterFactory.create())
+  .addConverterFactory(ProtoConverterFactory.create()) // Incorrect usage - Never gets used!
+  .build();
+
+public final GsonConverterFactory extends Converter.Factory {
+  private final Gson gson;
+
+  @Override
+  public Converter<ResponseBody, ?> responseBodyConverter(Type type, Annotation[] annotations,
+      Retrofit retrofit) {
+    TypeAdapter<?> adapter = gson.getAdapter(TypeToken.get(type));
+    return new GsonResponseBodyConverter<>(gson, adapter);
+  }
+
+  @Override
+  public Converter<?, RequestBody> requestBodyConverter(Type type,
+      Annotation[] parameterAnnotations, Annotation[] methodAnnotations, Retrofit retrofit) {
+    TypeAdapter<?> adapter = gson.getAdapter(TypeToken.get(type));
+    return new GsonRequestBodyConverter<>(gson, adapter);
+  }
+}
+```
+
+`GsonConverterFactory` will _never return null_ and thus if you register any converter factories after `GsonConverterFactory`, they will be completely ignored. This is documented in `GsonConverterFactory` javadoc.
+
+### Call Adapter Factories
 
 
 
