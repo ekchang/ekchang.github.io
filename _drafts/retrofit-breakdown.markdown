@@ -307,30 +307,6 @@ final class DefaultCallAdapterFactory extends CallAdapter.Factory {
 }
 ```
 
-It is worth looking at `RxJavaCallAdapterFactory` to see how Call objects are adapted to Observables:
-
-```java
-private CallAdapter<Observable<?>> getCallAdapter(Type returnType, Scheduler scheduler) {
-
-  Type observableType = getParameterUpperBound(0, (ParameterizedType) returnType);
-
-  Class<?> rawObservableType = getRawType(observableType);
-
-  if (rawObservableType == Response.class) {
-    ...
-    Type responseType = getParameterUpperBound(0, (ParameterizedType) observableType);
-    return new ResponseCallAdapter(responseType, scheduler);
-  }
-
-  if (rawObservableType == Result.class) {
-    ...
-    Type responseType = getParameterUpperBound(0, (ParameterizedType) observableType);
-    return new ResultCallAdapter(responseType, scheduler);
-  }
-
-  return new SimpleCallAdapter(observableType, scheduler);
-}
-```
 
  [retrofit]: http://square.github.io/retrofit/
  [proxy]: https://docs.oracle.com/javase/7/docs/api/java/lang/reflect/Proxy.html
