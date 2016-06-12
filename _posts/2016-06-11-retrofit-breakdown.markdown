@@ -307,6 +307,9 @@ final class DefaultCallAdapterFactory extends CallAdapter.Factory {
 }
 ```
 
+### Summary
+
+Retrofit is a powerful network client for your Java and Android applications. I hope this breakdown sheds some light on its inner workings and lets you appreciate what is going on behind the scenes.
 
  [retrofit]: http://square.github.io/retrofit/
  [proxy]: https://docs.oracle.com/javase/7/docs/api/java/lang/reflect/Proxy.html
