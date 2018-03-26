@@ -258,7 +258,7 @@ And selected error view behavior:
 
 ### Error Cursor Color?
 
-Have `colorControlHighlighted` also point to a selector that takes advantage of the new error state we've created, similar to `hint_color`.
+Have `colorControlActivated` also point to a selector that takes advantage of the new error state we've created, similar to `hint_color`.
 
 ### Summary
 
