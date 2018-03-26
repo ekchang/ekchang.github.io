@@ -1,7 +1,7 @@
 ---
 layout: post
 title: Annoying Guide to Styling TextInputLayout
-categories: tutorial, style
+categories: tutorial
 ---
 
 TextInputLayout is the currently accepted, first party text input widget intended to match material design specs. However the widget itself does not lend itself to be easily styled to fit your needs, and documentation is sparse. 
@@ -264,10 +264,10 @@ Have `colorControlHighlighted` also point to a selector that takes advantage of 
 Style/theme attributes can get you most places when styling the TextInputLayout, but fixing the error text typeface and tweaking the error label color takes more effort to deliver a look and feel that you want for your app outside of stock behavior.
 
  [android-fonts]: https://developer.android.com/guide/topics/ui/look-and-feel/fonts-in-xml.html
- [basic-style]: ../images/20180325_textinputlayout1.png
- [basic-style-error-select]: ../images/20180325_textinputlayout2.png
- [new-style]: ../images/20180325_textinputlayout3.png
- [new-style-error-select]: ../images/20180325_textinputlayout4.png
+ [basic-style]: http://ekchang.com/images/20180325_textinputlayout2.png
+ [basic-style-error-select]: http://ekchang.com/images/20180325_textinputlayout2.png
+ [new-style]: http://ekchang.com/images/20180325_textinputlayout3.png
+ [new-style-error-select]: http://ekchang.com/images/20180325_textinputlayout4.png
  [calligraphy]: https://github.com/chrisjenx/Calligraphy
  [fira-sans]: https://fonts.google.com/specimen/Fira+Sans
  [til-source-error-view]: https://android.googlesource.com/platform/frameworks/support/+/refs/heads/master/design/src/android/support/design/widget/TextInputLayout.java#627
