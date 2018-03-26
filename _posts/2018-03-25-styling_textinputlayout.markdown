@@ -32,8 +32,8 @@ And basic theme colors are set like this:
 <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
   <!-- Customize your theme here. -->
   <item name="colorPrimary">#3F51B5</item> // (Indigo 500)
-  <item name="colorPrimaryDark">#303F9F</item> (Indigo 700)
-  <item name="colorAccent">#00897B</item> (Teal 600)
+  <item name="colorPrimaryDark">#303F9F</item> // (Indigo 700)
+  <item name="colorAccent">#00897B</item> // (Teal 600)
 </style>
 ```
 
@@ -127,6 +127,7 @@ The way TextInputLayout manages its error view thwarts how Calligraphy works. Es
 Another annoying caveat is the exposed `setTypeface` method, which is intended to allow specifying the error and hint typefaces:
 
 ```java
+// TextInputLayout
 /**
  * Set the typeface to use for the hint and any label views (such as counter and error views).
  *
