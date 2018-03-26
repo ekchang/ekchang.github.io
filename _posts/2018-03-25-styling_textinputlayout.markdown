@@ -171,6 +171,7 @@ public MyTextInputLayout(...) {
     Typeface typeface = TypefaceUtils.load(context.getAssets(),
         loadFontPathFromStyle(context, attrs, FONT_PATH));
 
+    // Only works if errorEnabled == true. Either call it here or set it in your style.
     setTypeface(typeface);
   }
 
