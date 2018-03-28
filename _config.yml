@@ -5,7 +5,7 @@ email: hi@ekchang.com # Your contant email
 
 description: I work as an Android Developer. Sometimes I like to write about it.
 baseurl: "" # the subpath of your site, e.g. /blog/
-url: "https://ekchang.com" # the base hostname & protocol for your site
+url: "http://ekchang.com" # the base hostname & protocol for your site
 enforce_ssl: ekchang.com   # without any protocol
 
 # Social links.
